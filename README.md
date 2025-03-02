@@ -1,14 +1,16 @@
-<p style="text-align: center">
-  <h2 style="text-align: center">
+<p align="center">
+  <h2 align="center">
     Spotify cross-finder
   </h2>
 
-  <p style="text-align: center">
+  <p align="center">
     A Typescript project to see what tracks are duplicated across a specific user's public playlists.
     <br>
     <a href="https://github.com/WaveHDMI/spotify-cross-finder/issues">Issues</a>
   </p>
 </p>
+
+<br>
 
 ## How to use
 
