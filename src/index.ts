@@ -1,7 +1,9 @@
 import express from "express";
-import { generateRandomString } from "ts-randomstring/lib"
+import {generateRandomString} from "ts-randomstring/lib"
 import querystring from "querystring";
 import cookieParser from "cookie-parser";
+import bodyParser from "body-parser";
+import {findDuplicatesAsync} from "./utils";
 
 const stateKey = 'spotify_auth_state';
 const tokenKey = 'spotify_auth_token';
@@ -14,6 +16,18 @@ const redirectUri = 'http://localhost:8888/callback';
 
 const app = express();
 app.use(cookieParser());
+app.use(bodyParser.json());
+
+app.get('/', (request, response) => {
+
+    const accessToken = request.cookies[tokenKey];
+    if (!accessToken) {
+        response.redirect("/login");
+    } else {
+        response.send("Ok, you're good to go!");
+    }
+
+});
 
 app.get('/login', (request, response) => {
 
@@ -39,10 +53,7 @@ app.get('/callback', async (request, response) => {
     const storedState: string = request.cookies ? request.cookies[stateKey] : null;
 
     if (state === null || state !== storedState) {
-        response.redirect('/#' +
-            querystring.stringify({
-                error: 'state_mismatch'
-            }));
+        response.send(`Error 400: state_mismatch`);
     } else {
         response.clearCookie(stateKey);
 
@@ -73,113 +84,23 @@ app.get('/callback', async (request, response) => {
 
 });
 
-app.get('/duplicates', async (request, response) => {
+app.post('/find-duplicates', async (request, response) => {
 
-    const accessToken = request.cookies[tokenKey];
-
-    const playlistResponse = await fetch(`${spotifyBaseUrl}/users/${request.query.user_id}/playlists`, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${accessToken}`
-        }
-    });
-
-    const playlistObject: {
-        items: [{
-            id: string,
-            name: string,
-            tracks: {
-                total: number
-            }
-        }]
-    } = await playlistResponse.json();
-
-    const tracks: {
-        trackKey: string,
-        id: string,
-        name: string,
-        artists: {
-            id: string,
-            name: string
-        }[],
-        playlistIndex: number
-    }[] = [];
-    const playlistArray: { id: string, name: string }[] = [];
-    const trackPromises: Promise<Response>[] = [];
-
-    for(const playlist of playlistObject.items) {
-
-        for (let offset = 0; offset < playlist.tracks.total; offset += 100) {
-            const trackOptions = {
-                offset: offset,
-                limit: 100,
-                fields: "items(track(id,name,artists(id,name)))"
-            };
-
-            playlistArray.push(playlist);
-            trackPromises.push(
-                fetch(`${spotifyBaseUrl}/playlists/${playlist.id}/tracks?${querystring.stringify(trackOptions)}`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                })
-            );
-        }
-    }
-
-    await Promise.all(trackPromises);
-
-    for (let i = 0; i < trackPromises.length; i++) {
-        const result = await trackPromises[i];
-        const resultObject: {
-            items: [{
-                track: {
-                    id: string,
-                    name: string,
-                    artists: [{
-                        id: string,
-                        name: string
-                    }]
-                }
-            }]
-        } = await result.json();
-
-        if (resultObject && resultObject.items) {
-            for (const item of resultObject.items) {
-                tracks.push({
-                    ...item.track,
-                    trackKey: item.track.name + item.track.artists.sort((a, b) => a.name.localeCompare(b.name)).join(","),
-                    playlistIndex: i
-                });
-            }
-        }
-    }
-
-    const duplicates: { name: string, artists: string, playlists: string[] }[] = [];
-    const grouped = groupBy(tracks, track => track.trackKey);
-
-    for (const key in grouped) {
-        const group = grouped[key];
-        if (group.length > 1) {
-            const firstItem = group[0];
-            duplicates.push({
-                name: firstItem.name,
-                artists: firstItem.artists.map(a => a.name).join(", "),
-                playlists: group.map(g => playlistArray[g.playlistIndex].name)
-            });
-        }
-    }
-
+    const playlists = request.body.playlist != null ? request.body.playlists as string[] : [];
+    const duplicates = await findDuplicatesAsync(spotifyBaseUrl, request.cookies[tokenKey], request.query.user_id as string, playlists);
     response.json(duplicates);
+
+});
+
+app.post('/delete-duplicates', async (request, response) => {
+
+    const playlists = request.body.playlist != null ? request.body.playlists as string[] : [];
+    const duplicates = await findDuplicatesAsync(spotifyBaseUrl, request.cookies[tokenKey], request.query.user_id as string, playlists);
+    // TODO
+    response.json(duplicates);
+
 });
 
 app.listen(8888, () => {
     console.log(`SpotifyCrossFinder app listening on localhost:8888`);
-})
-
-const groupBy = <T, K extends keyof any>(arr: T[], key: (i: T) => K) =>
-    arr.reduce((groups, item) => {
-        (groups[key(item)] ||= []).push(item);
-        return groups;
-    }, {} as Record<K, T[]>);
+});
