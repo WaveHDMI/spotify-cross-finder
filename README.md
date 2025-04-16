@@ -4,7 +4,7 @@
   </h2>
 
   <p align="center">
-    A Typescript project to see what tracks are duplicated across a specific user's public playlists.
+    A TypeScript project to organize duplicated tracks across a user's playlists.
     <br>
     <a href="https://github.com/WaveHDMI/spotify-cross-finder/issues">Issues</a>
   </p>
